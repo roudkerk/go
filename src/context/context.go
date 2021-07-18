@@ -560,8 +560,14 @@ func (c *valueCtx) String() string {
 }
 
 func (c *valueCtx) Value(key interface{}) interface{} {
-	if c.key == key {
-		return c.val
+	for {
+		if c.key == key {
+			return c.val
+		}
+		parent, ok := c.Context.(*valueCtx)
+		if !ok {
+			return c.Context.Value(key)
+		}
+		c = parent
 	}
-	return c.Context.Value(key)
 }
