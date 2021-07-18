@@ -186,6 +186,14 @@ func (*emptyCtx) Value(key interface{}) interface{} {
 	return nil
 }
 
+func (c *emptyCtx) localValue(key interface{}) (interface{}, bool) {
+	return nil, true
+}
+
+func (c *emptyCtx) parent() Context {
+	return nil
+}
+
 func (e *emptyCtx) String() string {
 	switch e {
 	case background:
@@ -349,10 +357,15 @@ type cancelCtx struct {
 }
 
 func (c *cancelCtx) Value(key interface{}) interface{} {
-	if key == &cancelCtxKey {
-		return c
-	}
-	return c.Context.Value(key)
+	return findValue(c, key)
+}
+
+func (c *cancelCtx) localValue(key interface{}) (interface{}, bool) {
+	return c, key == &cancelCtxKey
+}
+
+func (c *cancelCtx) parent() Context {
+	return c.Context
 }
 
 func (c *cancelCtx) Done() <-chan struct{} {
@@ -560,8 +573,41 @@ func (c *valueCtx) String() string {
 }
 
 func (c *valueCtx) Value(key interface{}) interface{} {
-	if c.key == key {
-		return c.val
+	return findValue(c, key)
+}
+
+func (c *valueCtx) localValue(key interface{}) (interface{}, bool) {
+	return c.val, key == c.key
+}
+
+func (c *valueCtx) parent() Context {
+	return c.Context
+}
+
+type internalContext interface {
+	Context
+	localValue(key interface{}) (interface{}, bool)
+	parent() Context
+}
+
+var (
+	_ internalContext = (*emptyCtx)(nil)
+	_ internalContext = (*cancelCtx)(nil)
+	_ internalContext = (*timerCtx)(nil)
+	_ internalContext = (*valueCtx)(nil)
+)
+
+func findValue(ctx internalContext, key interface{}) interface{} {
+	for {
+		if v, ok := ctx.localValue(key); ok {
+			return v
+		}
+		// emptyCtx.localValue() never fails so ctx can't have type *emptyCtx.
+		p := ctx.parent()
+		var ok bool
+		ctx, ok = p.(internalContext)
+		if !ok {
+			return p.Value(key)
+		}
 	}
-	return c.Context.Value(key)
 }
