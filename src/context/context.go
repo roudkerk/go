@@ -352,7 +352,7 @@ func (c *cancelCtx) Value(key interface{}) interface{} {
 	if key == &cancelCtxKey {
 		return c
 	}
-	return c.Context.Value(key)
+	return value(c.Context, key)
 }
 
 func (c *cancelCtx) Done() <-chan struct{} {
@@ -563,5 +563,31 @@ func (c *valueCtx) Value(key interface{}) interface{} {
 	if c.key == key {
 		return c.val
 	}
-	return c.Context.Value(key)
+	return value(c.Context, key)
+}
+
+func value(ctx Context, key interface{}) interface{} {
+	for {
+		switch tCtx := ctx.(type) {
+		case *valueCtx:
+			if key == tCtx.key {
+				return tCtx.val
+			}
+			ctx = tCtx.Context
+		case *cancelCtx:
+			if key == &cancelCtxKey {
+				return (*cancelCtx)(tCtx) // Redundant cast to confirm underlying type.
+			}
+			ctx = tCtx.Context
+		case *timerCtx:
+			if key == &cancelCtxKey {
+				return (*cancelCtx)(&tCtx.cancelCtx) // Redundant cast to confirm underlying type.
+			}
+			ctx = tCtx.Context
+		case *emptyCtx:
+			return nil
+		default:
+			return ctx.Value(key)
+		}
+	}
 }
